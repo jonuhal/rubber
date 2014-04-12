@@ -34,7 +34,7 @@ module Rubber
              &Proc.new {|a| Integer(a)}
 
       def execute
-        signal_usage_error "DIRECTORY and ARCHIVE are required; NAME is required when ARCHIVE is \"true\"" unless directory and (not archive or (archive and name))
+        signal_usage_error "DIRECTORY is required; NAME is required when ARCHIVE is \"true\"" unless directory and (not archive or (archive and name))
 
         log_src_dir = directory
         log_file_glob = pattern
