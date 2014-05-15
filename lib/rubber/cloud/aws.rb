@@ -246,7 +246,7 @@ module Rubber
         return requests
       end
 
-      def setup_security_groups(host=nil, roles=[], vpc_id=nil)
+      def setup_security_groups(host=nil, roles=[])
         rubber_cfg = Rubber::Configuration.get_configuration(Rubber.env)
         scoped_env = rubber_cfg.environment.bind(roles, host)
         security_group_defns = Hash[scoped_env.security_groups.to_a]
@@ -257,7 +257,7 @@ module Rubber
           security_group_defns = inject_auto_security_groups(security_group_defns, sghosts, sgroles)
         end
 
-        sync_security_groups(security_group_defns, vpc_id)
+        sync_security_groups(security_group_defns)
       end
 
       def describe_security_groups(group_name=nil)
@@ -359,13 +359,8 @@ module Rubber
 
       private
 
-<<<<<<< HEAD
-      def create_security_group(group_name, group_description, vpc_id=nil)
-        @compute_provider.security_groups.create(:name => group_name, :description => group_description, :vpc_id => vpc_id)
-=======
       def create_security_group(group_name, group_description)
         compute_provider.security_groups.create(:name => group_name, :description => group_description)
->>>>>>> upstream/master
       end
 
       def destroy_security_group(group_name)
@@ -398,7 +393,7 @@ module Rubber
         group.revoke_port_range(from_port.to_i..to_port.to_i, opts)
       end
 
-      def sync_security_groups(groups, vpc_id=nil)
+      def sync_security_groups(groups)
         return unless groups
 
         groups = Rubber::Util::stringify(groups)
@@ -415,7 +410,7 @@ module Rubber
 
           if group_keys.delete(group_name)
             # sync rules
-            logger.debug "Security Group already in cloud, syncing rules: #{group_name} #{'(vpc: ' + vpc_id + ')' if vpc_id}"
+            capistrano.logger.debug "Security Group already in cloud, syncing rules: #{group_name}"
             group = groups[group_name]
 
             # convert the special case default rule into what it actually looks like when
@@ -506,9 +501,9 @@ module Rubber
         # For each group that didnt already exist in cloud
         group_keys.each do |group_name|
           group = groups[group_name]
-          logger.debug "Creating new security group: #{group_name} #{'(vpc: ' + vpc_id + ')' if vpc_id}"
+          capistrano.logger.debug "Creating new security group: #{group_name}"
           # create each group
-          create_security_group(group_name, group['description'], vpc_id)
+          create_security_group(group_name, group['description'])
           # create rules for group
           group['rules'].each do |rule_map|
             capistrano.logger.debug "Creating new rule: #{rule_map.inspect}"
