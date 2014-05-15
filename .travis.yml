@@ -8,13 +8,13 @@ rvm:
   - 1.8.7
   - 1.9.2
   - 1.9.3
-  - 2.0.0 
+  - 2.0.0
+  - 2.1
   - ruby-head
   - jruby-18mode
   - jruby-19mode
   - jruby-head
-  - rbx-18mode
-  - rbx-19mode
+  - rbx-2
 
 matrix:
   exclude:
@@ -26,6 +26,8 @@ matrix:
       gemfile: Gemfile.1.8.7
     - rvm: 2.0.0
       gemfile: Gemfile.1.8.7
+    - rvm: 2.1
+      gemfile: Gemfile.1.8.7
     - rvm: ruby-head
       gemfile: Gemfile.1.8.7
     - rvm: jruby-18mode
@@ -34,15 +36,14 @@ matrix:
       gemfile: Gemfile.1.8.7
     - rvm: jruby-head
       gemfile: Gemfile.1.8.7
-    - rvm: rbx-18mode
-      gemfile: Gemfile
-    - rvm: rbx-19mode
+    - rvm: rbx-2
       gemfile: Gemfile.1.8.7
 
   allow_failures:
-    - rvm: ruby-head
+    - rvm: rbx-2
+    - rvm: 1.8.7
+    - rvm: jruby-18mode
     - rvm: jruby-head
-    - rvm: rbx-18mode
 
 # script: bundle exec rspec spec
 env:

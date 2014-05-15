@@ -1,3 +1,244 @@
+2.8.1 (05/01/2014)
+
+Bug Fixes:
+=========
+
+[core] Detect alternate location of secret file when it is moved into the /config/rubber dir on remote servers. <9bd12ad>
+[core] Make sure add-apt-repository is available on Ubuntu > 12.04. <36c423d>
+[core] Fixed compatibility with Vagrant 1.5.x. <55416f8>
+[selenium_grid_hub] Replaced hard-coded app user with app_user variable. <afc7e9c>
+[selenium_grid_hub] Fixed dynamic MaxPermSize. <abd46cd>
+[web_tools] Underscores aren't valid in hostname, so convert to hyphens like we do everywhere else. <bbe0b81>
+
+
+2.8.0 (03/30/2014)
+
+New Features:
+============
+
+[base, core] Added the ability to specify a package manager mirror for faster package installation. <a127846>
+
+Improvements:
+============
+
+[base] Use binstubs if available in the rubber script since it can be much faster, particularly on JRuby. <eefa30e>
+[core] Suppress dpkg output to cut down on noise in setting up iptables firewall rules. <59997aa>
+[core] Only upload the rubber config once, rather than everytime run_config is called. <1b14e73>
+[core] There's no need to specially upload rubber config files when using a non-SCM deploy strategy. <3227440>
+[core] Prevent tasks from running multiple times if mounting a volume to a location that would blow away the deploy directory. <c222684>
+[core] Sped up config file transformation a bit by cutting down on file system operations. <5623fac>
+[core] Defer loading of rubber encryption code until it's actually needed.
+
+Bug Fixes:
+=========
+
+[core] Fixed a bad env var reference in setting up iptables firewall rules. <1dc844a>
+
+
+2.7.5 (03/28/2014)
+
+Improvements:
+============
+
+[base] Upgraded ruby-build from 20140210 to 20140225 and bumped the default ruby version from 1.9.3-p484 to 2.0.0-p451. <396b72e>
+[core] Install iptables if it's not already installed and it's needed to set up (non-EC2) firewall rules. <581c2e0>
+[redis] Upgraded from redis 2.8.7 to 2.8.8. <8775a76>
+
+Bug Fixes:
+=========
+
+[core] Fixed a problem whereby if a part of the :deploy_to path (e.g., /mnt) is remounted with an attached volume, the code may not deploy properly. <a98edcc>
+
+
+2.7.4 (03/13/2014)
+
+Improvements:
+============
+
+[graylog] Upgraded from Graylog 0.20.0 RC1 to 0.20.1. <67c3c77, 726b00a>
+[redis] Upgraded from redis 2.8.5 to 2.8.7. <60e2e2b, 20ea7bc>
+
+Bug Fixes:
+=========
+
+[core] Only upload the iptables persistence scripts to the host that the rules are being generated for. <f6db5ed>
+
+
+2.7.3 (02/12/2014)
+
+Improvements:
+============
+
+[core] Be more aggressive about saving iptables rules to guard against unexpected shutdowns. <9c62aa1>
+
+
+2.7.2 (02/12/2014)
+
+*SECURITY WARNING*: Versions of rubber prior to this release will not save your iptables rules.  Upon reboot of your
+server, it will load with a clear set of rules, effectively making every port on your server publicly accessible.
+
+Who is affected?
+
+Anyone not using EC2.  The EC2 code path uses EC2 security groups.  All other providers use iptables.
+
+How do I fix it?
+
+Upgrade to rubber 2.7.2 and run `cap rubber:setup_security_groups`, which will both refresh the iptables rules and
+set up the files needed to persist and releoad rules.
+
+
+Improvements:
+============
+
+[base] Upgraded from ruby-build 20131220.1 to 20140210. <a1288ac>
+
+Bug Fixes:
+=========
+
+[core] Save and restore iptables rules upon reboot. <72526aa>
+
+
+2.7.1 (02/04/2014)
+
+Improvements:
+============
+
+[redis] Upgraded from redis 2.8.4 to 2.8.5. <630c671>
+
+Bug Fixes:
+=========
+
+[core] Fixed a permissions problem with some files in the gem.
+
+
+2.7.0 (02/03/2014)
+
+New Features:
+============
+
+[core] Added a new @delayed_post option to template preambles to defer executing a command until all templates have been processed. <41cae48>
+[delay_job] Added a new Delayed::Job role. <c7e33f5>
+[discourse] Added a new Discourse role that will take care of deploying the Discourse forum software and dependencies. <f01eeac>
+[ffmpeg] Added a new ffmpeg role. <23ba011>
+[newrelic] Added a new role for setting up the NewRelic system daemons. <7bc89ce>
+
+Improvements:
+============
+
+[core] Force shut down vSphere VMs when destroying an instance so the process isn't blocked if the machine doesn't shut down gracefully. <12bf770>
+[elasticsearch] Upgraded ElasticSearch from 0.19.12 to 0.90.10 and switched to the official deb packages. <a399316, 804bd1f, 4ca29e2>
+[graylog] Upgraded from graylog 0.9.6p1 to 0.20.0-rc1.1 <3476003, 4ca29e2>
+[memcached] Added a monit template. <87763e9>
+[memcached] Allow specifying the location of the PID file. <31bc9fb>
+[memcached] Major overhaul of the memcached template to modernize it. <8757cf8, 4307270, 8cebb56, ae8d89a>
+[mongodb] Monit will restart mongodb if the PID file doesn't exist. <7a57c3e>
+[redis] Upgraded from redis 2.6.16 to 2.8.4 <3877205, 644e6ee>
+[solr] Major overhaul of the solr template to modernize it. <a45046d, 2fc4779, 02e04b0, 676256d>
+
+Bug Fixes:
+=========
+
+[core] Fixed issue with calling cap rubber:setup_security_groups on multiple hosts. <bb17621>
+[core] Fixed volume creation on non-EC2 providers. <c49df54>
+[elasticsearch] Remove the elasticsearch-head plugin before attempting to reinstall it. <6438b68>
+[mysql] Delete all blank users initially to prevent issues with using a host value of '%'. <e75974a>
+[passenger_nginx] Added missing 'nginx_log_dir' setting to rubber-passenger_nginx.yml. <e6c3cdf>
+[passenger_nginx] Rebuild Passenger/Nginx when Ruby version changes. <fbb1e54>
+[solr] Fixed some typos in the Solr configuration. <a45046d>
+[unicorn] Fixed unicorn process management script. <c56a93c>
+
+
+2.6.5 (01/07/2014)
+
+Bug Fixes:
+=========
+
+[base] Update instance name for DigitalOcean: Ubuntu 12.04.3 x64. <0d57e12>
+[core] Fix vagrant 1.4.x sending array of ssh keys. <70fe6b6>
+
+
+2.6.4 (12/23/2013)
+
+Improvements:
+============
+
+[base] Upgraded ruby-build from 20131122.1 to 20131220.1. <c869c00>
+[base] Upgraded default ruby from 1.9.3-p448 to 1.9.3-p484. <d843c0c>
+
+Bug Fixes:
+=========
+
+[core] :only => { :primary => true } getting clobbered <a9814c9>
+[core] Clear out potentially cached state upon initialization if initializing Rubber twice in the same runtime. <1d9fe51>
+
+
+2.6.3 (11/19/2013)
+
+Improvements:
+============
+
+[core] Drastically improved the speed of repeated configuration lookups.
+[core] Fixed a potential issue uploading backups to S3 if the bucket name contains the '.' character. <7ea9f39>
+
+Bug Fixes:
+=========
+
+[core] Fixed creating EBS volumes (issue #417). <a7d47c5>
+
+
+2.6.2 (11/07/2013)
+
+Improvements:
+============
+
+[memcached]  Added configuration of max memcached memory size through rubber var 'memcached_max_mem'. <ba28c39>
+[cassandra] Quote all `rubber_env.host` in Monit config template in case hostname conflicts with monit keyword. <61bd9b1>
+[graphite] Quote all `rubber_env.host` in Monit config template in case hostname conflicts with monit keyword. <61bd9b1>
+[elasticsearch] Quote all `rubber_env.host` in Monit config template in case hostname conflicts with monit keyword. <61bd9b1>
+[graylog] Quote all `rubber_env.host` in Monit config template in case hostname conflicts with monit keyword. <61bd9b1>
+[jetty] Quote all `rubber_env.host` in Monit config template in case hostname conflicts with monit keyword. <61bd9b1>
+[mongrel] Quote all `rubber_env.host` in Monit config template in case hostname conflicts with monit keyword. <61bd9b1>
+[redis] Quote all `rubber_env.host` in Monit config template in case hostname conflicts with monit keyword. <61bd9b1>
+[sphinx] Quote all `rubber_env.host` in Monit config template in case hostname conflicts with monit keyword. <61bd9b1>
+[torquebox] Quote all `rubber_env.host` in Monit config template in case hostname conflicts with monit keyword. <61bd9b1>
+[zookeeper] Quote all `rubber_env.host` in Monit config template in case hostname conflicts with monit keyword. <61bd9b1>
+
+Bug Fixes:
+=========
+
+[base] Fixed unknown method 'known_roles' when running create_staging. <44167c4>
+[core] Fixed ip_address deprecation for digital ocean. <62d2e90>
+[core] Fixed a thread safety issue in Capistrano via a monkey-patch. <f3f9086>
+
+
+2.6.1 (11/06/2013)
+
+Improvements:
+============
+
+[core] Don't try to connect to the fog compute or storage providers until we actually need them. <5536511>
+
+Bug Fixes:
+=========
+
+[core] Fixed a bug attaching EBS volumes, introduced by a recent refactoring. <51d2619>
+[core] Fixed setup_remote_aliases to work when an SSH gateway is in place. <3a776f9>
+
+
+2.6.0 (11/05/2013)
+
+New Features:
+============
+
+[core] Added a new provider for vSphere.  See https://github.com/rubber/rubber/wiki/Providers for configuration details.
+
+Improvements:
+============
+
+[base] Upgraded to ruby-build 20131030 <214423d>
+[base] Enhances database.yml to respond to active environment, not just 'production' <3843caf>
+
+
 2.5.5 (10/16/2013)
 
 New Features:

@@ -97,7 +97,7 @@ module Rubber
       end
 
       def setup_security_groups(host=nil, roles=[])
-        raise "Digital Ocean provider can only set up one host a time" if host.split(',').size != 1
+        raise "Provider can only set up security groups for one host a time" if host.split(',').size != 1
 
         rubber_cfg = Rubber::Configuration.get_configuration(Rubber.env)
         scoped_env = rubber_cfg.environment.bind(roles, host)
@@ -114,6 +114,11 @@ module Rubber
         groups = isolate_groups(groups)
 
         script = <<-ENDSCRIPT
+          # Install iptables if it's not already installed.
+          if ! dpkg -l iptables &> /dev/null; then
+            export DEBIAN_FRONTEND=noninteractive; apt-get -q -o Dpkg::Options::=--force-confold -y --force-yes install iptables
+          fi
+
           # Clear out all firewall rules to start.
           iptables -F
 
@@ -154,8 +159,29 @@ module Rubber
         end
 
         script << "\niptables -A INPUT -j DROP -m comment --comment 'Disable all other connections.'"
+        script << "\niptables-save > /etc/iptables.rules"
 
-        capistrano.run_script 'setup_firewall_rules', script, :hosts => instance.external_ip
+        iptables_load = <<-FILE
+#!/bin/sh
+
+iptables-restore < /etc/iptables.rules
+exit 0
+        FILE
+
+        iptables_save = <<-FILE
+#!/bin/sh
+
+iptables-save > /etc/iptables.rules
+if [ -f /etc/iptables.downrules ]; then
+   iptables-restore < /etc/iptables.downrules
+fi
+exit 0
+        FILE
+
+        capistrano.put(iptables_load, '/etc/network/if-pre-up.d/iptablesload', :mode => '+x', :hosts => instance.external_ip)
+        capistrano.put(iptables_save, '/etc/network/if-post-down.d/iptablessave', :mode => '+x', :hosts => instance.external_ip)
+
+        capistrano.run_script('setup_firewall_rules', script, :hosts => instance.external_ip)
       end
 
       def describe_security_groups(group_name=nil)
@@ -188,6 +214,10 @@ module Rubber
         end
 
         groups
+      end
+
+      def should_disable_password_based_ssh_login?
+        false
       end
 
     end

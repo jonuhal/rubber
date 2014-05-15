@@ -113,7 +113,7 @@ cloud_providers:
     region: New York 1
 
     # REQUIRED: The image name and type for creating instances.
-    image_id: Ubuntu 12.04 x64
+    image_id: Ubuntu 12.04.3 x64
     image_type: 512MB
 
   # Use an alternate cloud provider supported by fog.  This doesn't fully work
@@ -245,6 +245,14 @@ private_networks: [10.0.0.0/8]
 # For example, packages: [[rake, 0.7.1], irb]
 packages: [postfix, build-essential, git-core, libxslt-dev, ntp]
 
+# OPTIONAL: The package manager mirror to use for installation of primary packages (i.e., those not explicitly
+# sourced from a different repository).  If not specified, whatever mirror configured by your server image
+# will be used.
+#
+# Note that Ubuntu has a special URL that can be used to auto-select the mirror based upon geoip.  To use
+# it, specify 'mirror://mirrors.ubuntu.com/mirrors.txt' as the value.
+# package_manager_mirror: 'mirror://mirrors.ubuntu.com/mirrors.txt'
+
 # OPTIONAL: gem sources to setup for rubygems
 # gemsources: ["https://rubygems.org"]
 
@@ -266,7 +274,7 @@ stop_on_error_cmd: "function error_exit { exit 99; }; trap error_exit ERR"
 #
 # staging_roles: "web,app,db:primary=true"
 # Auto detect staging roles
-staging_roles: "#{rubber_env.known_roles.reject {|r| r =~ /slave/ || r =~ /^db$/ }.join(',')}"
+staging_roles: "#{known_roles.reject {|r| r =~ /slave/ || r =~ /^db$/ }.join(',')}"
 
 # OPTIONAL: Lets one assign amazon elastic IPs (static IPs) to your instances
 #           You should typically set this on the role/host level rather than

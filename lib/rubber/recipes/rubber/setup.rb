@@ -6,9 +6,28 @@ namespace :rubber do
     Bootstraps instances by setting timezone, installing packages and gems
   DESC
   task :bootstrap do
+    # This special piece of Hell is designed to work around callback lifecyle issues and problems associated with
+    # remounting the :deploy_to directory.  The problem is that depending on the filesystem type and whether LLVM is
+    # used, we may need to install packages before we can setup volumes.  However, most end user custom installation
+    # tasks will be configured as "after 'rubber:install_packages'", meaning they'll trigger before the volumes are set
+    # up. While this is safe, it can be very costly.  If :deploy_to is set to '/mnt/myapp-production', for instance,
+    # and we mount a new volume to /mnt, then everything in /mnt will go away and need to be reconstituted.  Rubber
+    # ensures that the correct thing will happen, so there's no correctness issue.  But, if any of those callbacks ran
+    # something like :update_code_for_bootstrap, then several costly operations will be run twice, such as uploading
+    # the code to be deployed and bundle installing gems.  The first time will be in that callback, the second time
+    # will be as part of the normal deploy, after /mnt has been remounted and thus, cleared.
+    #
+    # In order to avoid effectively deploying the app twice in many circumstances, we rebind all
+    # "after 'rubber:install_packages'" callbacks to be "after 'rubber:setup_volumes'".  This allows end-user
+    # configuration to still hook after package installation for normal case operation, while allowing rubber to run
+    # semi-performantly when bootstrapping.
+
+    rebind_after_install_packages_callbacks('rubber:setup_volumes')
+
     link_bash
     set_timezone
     enable_multiverse
+    configure_package_manager_mirror
     install_core_packages
     upgrade_packages
     install_packages
@@ -16,6 +35,15 @@ namespace :rubber do
     setup_gem_sources
     install_gems
     deploy.setup
+  end
+
+  def rebind_after_install_packages_callbacks(new_after_task)
+    install_package_task = find_task(:install_packages)
+
+    after_install_packages_callbacks = []
+    callbacks[:after].delete_if { |c| after_install_packages_callbacks << c if c.applies_to?(install_package_task) }
+
+    after_install_packages_callbacks.each { |c| after(new_after_task, c.source) }
   end
 
   # Sets up instance to allow root access (e.g. recent canonical AMIs)
@@ -26,7 +54,15 @@ namespace :rubber do
     # We special-case the 'ubuntu' user since the Canonical AMIs on EC2 don't set the password for
     # this account, making any password prompt potentially confusing.
     orig_password = fetch(:password)
-    set(:password, initial_ssh_user == 'ubuntu' || ENV.has_key?('RUN_FROM_VAGRANT') ? nil : Capistrano::CLI.password_prompt("Password for #{initial_ssh_user} @ #{ip}: "))
+    initial_ssh_password = fetch(:initial_ssh_password, nil)
+
+    if initial_ssh_user == 'ubuntu' || ENV.has_key?('RUN_FROM_VAGRANT')
+      set(:password, nil)
+    elsif initial_ssh_password
+      set(:password, initial_ssh_password)
+    else
+      set(:password, Capistrano::CLI.password_prompt("Password for #{initial_ssh_user} @ #{ip}: "))
+    end
 
     task :_ensure_key_file_present, :hosts => "#{initial_ssh_user}@#{ip}" do
       public_key_filename = "#{cloud.env.key_file}.pub"
@@ -50,9 +86,19 @@ namespace :rubber do
       rsudo "mkdir -p /root/.ssh && cp /home/#{initial_ssh_user}/.ssh/authorized_keys /root/.ssh/"
     end
 
+    task :_disable_password_based_ssh_login, :hosts => "#{initial_ssh_user}@#{ip}" do
+      rubber.sudo_script 'disable_password_based_ssh_login', <<-ENDSCRIPT
+        if ! grep -q 'PasswordAuthentication no' /etc/ssh/sshd_config; then
+          echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config
+          service ssh restart
+        fi
+      ENDSCRIPT
+    end
+
     begin
       _ensure_key_file_present
       _allow_root_ssh
+      _disable_password_based_ssh_login if cloud.should_disable_password_based_ssh_login?
     rescue ConnectionError => e
       if e.message =~ /Net::SSH::AuthenticationFailed/
         logger.info "Can't connect as user #{initial_ssh_user} to #{ip}, assuming root allowed"
@@ -169,15 +215,25 @@ namespace :rubber do
 
       replace="#{delim}\\n#{remote_hosts.join("\\n")}\\n#{delim}"
 
-      rubber.sudo_script 'setup_remote_aliases', <<-ENDSCRIPT
+      setup_remote_aliases_script = <<-ENDSCRIPT
         sed -i.bak '/#{delim}/,/#{delim}/c #{replace}' /etc/hosts
         if ! grep -q "#{delim}" /etc/hosts; then
           echo -e "#{replace}" >> /etc/hosts
         fi
       ENDSCRIPT
 
+      # If an SSH gateway is being used to deploy to the cluster, we need to ensure that gateway has an updated /etc/hosts
+      # first, otherwise it won't be able to resolve the hostnames for the other servers we need to connect to.
+      gateway = fetch(:gateway, nil)
+      if gateway
+        rubber.sudo_script 'setup_remote_aliases', setup_remote_aliases_script, :hosts => gateway
+      end
+
+      rubber.sudo_script 'setup_remote_aliases', setup_remote_aliases_script
+
       # Setup hostname on instance so shell, etcs have nice display
       rsudo "echo $CAPISTRANO:HOST$ > /etc/hostname && hostname $CAPISTRANO:HOST$"
+
       # Newer ubuntus ec2-init script always resets hostname, so prevent it
       rsudo "mkdir -p /etc/ec2-init && echo compat=0 > /etc/ec2-init/is-compat-env"
     end
@@ -295,6 +351,16 @@ namespace :rubber do
   end
 
   desc <<-DESC
+    Updates the mirror used for the primary packages installed by the package manager.
+  DESC
+  task :configure_package_manager_mirror do
+    if rubber_env.package_manager_mirror
+      # This will swap out deb lines that point at a URL while skipping over sources like "deb cdrom".
+      rsudo "sed -i.bak -r \"s/(deb|deb-src) [^ :]+:\\/\\/[^ ]+ (.*)/\\1 #{rubber_env.package_manager_mirror.gsub('/', '\\/')} \\2/g\" /etc/apt/sources.list"
+    end
+  end
+
+  desc <<-DESC
     Update to the newest versions of all packages/gems.
   DESC
   task :update do
@@ -330,9 +396,11 @@ namespace :rubber do
   DESC
   task :install_core_packages do
     core_packages = [
-        'python-software-properties', # Needed for add-apt-repository, which we use for adding PPAs.
+        'python-software-properties', # Needed for add-apt-repository (<= Ubuntu 12.04), which we use for adding PPAs.
+        'software-properties-common', # Needed for add-apt-repository (> Ubuntu 12.04), which we use for adding PPAs.
         'bc',                         # Needed for comparing version numbers in bash, which we do for various setup functions.
-        'update-notifier-common'      # Needed for notifying us when a package upgrade requires a reboot.
+        'update-notifier-common',     # Needed for notifying us when a package upgrade requires a reboot.
+        'scsitools'                   # Needed to rescan SCSI channels for any added devices.
     ]
 
     rsudo "apt-get -q update"

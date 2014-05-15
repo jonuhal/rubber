@@ -16,7 +16,8 @@ module Rubber
         storage_credentials = {
           :provider => 'AWS',
           :aws_access_key_id => env.access_key,
-          :aws_secret_access_key => env.secret_access_key
+          :aws_secret_access_key => env.secret_access_key,
+          :path_style => true
         }
 
         @table_store = ::Fog::AWS::SimpleDB.new(compute_credentials)
@@ -42,7 +43,7 @@ module Rubber
         opts = {}
         opts["instance-id"] = instance_id if instance_id
 
-        response = @compute_provider.servers.all(opts)
+        response = compute_provider.servers.all(opts)
         response.each do |item|
           instance = {}
           instance[:id] = item.id
@@ -54,7 +55,7 @@ module Rubber
           instance[:state] = item.state
           instance[:zone] = item.availability_zone
           instance[:provider] = 'aws'
-          instance[:platform] = item.platform || 'linux'
+          instance[:platform] = item.platform || Rubber::Platforms::LINUX
           instance[:root_device_type] = item.root_device_type
           instances << instance
         end
@@ -158,14 +159,14 @@ module Rubber
         CMD
 
         image_location = "#{env.image_bucket}/#{image_name}.manifest.xml"
-        response = @compute_provider.register_image(image_name,
+        response = compute_provider.register_image(image_name,
                                                     "rubber bundled image",
                                                     image_location)
         return response.body["imageId"]
       end
 
       def destroy_image(image_id)
-        image = @compute_provider.images.get(image_id)
+        image = compute_provider.images.get(image_id)
         raise "Could not find image: #{image_id}, aborting destroy_image" if image.nil?
 
         location_parts = image.location.split('/')
@@ -204,7 +205,7 @@ module Rubber
 
       def describe_availability_zones
         zones = []
-        response = @compute_provider.describe_availability_zones()
+        response = compute_provider.describe_availability_zones()
         items = response.body["availabilityZoneInfo"]
         items.each do |item|
           zone = {}
@@ -216,7 +217,7 @@ module Rubber
       end
 
       def create_spot_instance_request(spot_price, ami, ami_type, security_groups, availability_zone)
-        response = @compute_provider.spot_requests.create(:price => spot_price,
+        response = compute_provider.spot_requests.create(:price => spot_price,
                                                           :image_id => ami,
                                                           :flavor_id => ami_type,
                                                           :groups => security_groups,
@@ -230,7 +231,7 @@ module Rubber
         requests = []
         opts = {}
         opts["spot-instance-request-id"] = request_id if request_id
-        response = @compute_provider.spot_requests.all(opts)
+        response = compute_provider.spot_requests.all(opts)
         response.each do |item|
           request = {}
           request[:id] = item.id
@@ -264,7 +265,7 @@ module Rubber
 
         opts = {}
         opts["group-name"] = group_name if group_name
-        response = @compute_provider.security_groups.all(opts)
+        response = compute_provider.security_groups.all(opts)
 
         response.each do |item|
           group = {}
@@ -301,43 +302,49 @@ module Rubber
         groups
       end
 
-      def create_volume(size, zone)
-        volume = @compute_provider.volumes.create(:size => size.to_s, :availability_zone => zone)
-        return volume.id
+      def create_volume(instance, volume_spec)
+        volume = compute_provider.volumes.create(:size => volume_spec['size'], :availability_zone => volume_spec['zone'])
+        volume.id
       end
 
-      def attach_volume(volume_id, instance_id, device)
-        volume = @compute_provider.volumes.get(volume_id)
-        server = @compute_provider.servers.get(instance_id)
-        volume.device = device
+      def after_create_volume(instance, volume_id, volume_spec)
+        # After we create an EBS volume, we need to attach it to the instance.
+        volume = compute_provider.volumes.get(volume_id)
+        server = compute_provider.servers.get(instance.instance_id)
+        volume.device = volume_spec['device']
         volume.server = server
       end
 
-      def detach_volume(volume_id, force=true)
-        volume = @compute_provider.volumes.get(volume_id)
-        force ? volume.force_detach : (volume.server = nil)
+      def before_destroy_volume(volume_id)
+        # Before we can destroy an EBS volume, we must detach it from any running instances.
+        volume = compute_provider.volumes.get(volume_id)
+        volume.force_detach
+      end
+
+      def destroy_volume(volume_id)
+        compute_provider.volumes.get(volume_id).destroy
       end
 
       def describe_volumes(volume_id=nil)
         volumes = []
         opts = {}
         opts[:'volume-id'] = volume_id if volume_id
-        response = @compute_provider.volumes.all(opts)
+        response = compute_provider.volumes.all(opts)
+
         response.each do |item|
           volume = {}
           volume[:id] = item.id
           volume[:status] = item.state
+
           if item.server_id
             volume[:attachment_instance_id] = item.server_id
             volume[:attachment_status] = item.attached_at ? "attached" : "waiting"
           end
+
           volumes << volume
         end
-        return volumes
-      end
 
-      def destroy_volume(volume_id)
-        @compute_provider.volumes.get(volume_id).destroy
+        volumes
       end
 
       # resource_id is any Amazon resource ID (e.g., instance ID or volume ID)
@@ -345,23 +352,28 @@ module Rubber
       def create_tags(resource_id, tags)
         # Tags need to be created individually in fog
         tags.each do |k, v|
-          @compute_provider.tags.create(:resource_id => resource_id,
+          compute_provider.tags.create(:resource_id => resource_id,
                                         :key => k.to_s, :value => v.to_s)
         end
       end
 
       private
 
+<<<<<<< HEAD
       def create_security_group(group_name, group_description, vpc_id=nil)
         @compute_provider.security_groups.create(:name => group_name, :description => group_description, :vpc_id => vpc_id)
+=======
+      def create_security_group(group_name, group_description)
+        compute_provider.security_groups.create(:name => group_name, :description => group_description)
+>>>>>>> upstream/master
       end
 
       def destroy_security_group(group_name)
-        @compute_provider.security_groups.get(group_name).destroy
+        compute_provider.security_groups.get(group_name).destroy
       end
 
       def add_security_group_rule(group_name, protocol, from_port, to_port, source)
-        group = @compute_provider.security_groups.get(group_name)
+        group = compute_provider.security_groups.get(group_name)
         opts = {:ip_protocol => protocol || 'tcp'}
 
         if source.instance_of? Hash
@@ -374,7 +386,7 @@ module Rubber
       end
 
       def remove_security_group_rule(group_name, protocol, from_port, to_port, source)
-        group = @compute_provider.security_groups.get(group_name)
+        group = compute_provider.security_groups.get(group_name)
         opts = {:ip_protocol => protocol || 'tcp'}
 
         if source.instance_of? Hash

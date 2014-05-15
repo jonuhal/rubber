@@ -16,7 +16,8 @@ module Rubber
           storage_credentials = {
             :provider => 'AWS',
             :aws_access_key_id => env.cloud_providers.aws.access_key,
-            :aws_secret_access_key => env.cloud_providers.aws.secret_access_key
+            :aws_secret_access_key => env.cloud_providers.aws.secret_access_key,
+            :path_style => true
           }
 
           storage_credentials[:region] = env.cloud_providers.aws.region
@@ -79,11 +80,11 @@ module Rubber
           instance[:id] = item.id
           instance[:state] = item.state
           instance[:type] = item.flavor_id
-          instance[:external_ip] = item.ip_address
-          instance[:internal_ip] = item.ip_address
+          instance[:external_ip] = item.public_ip_address
+          instance[:internal_ip] = item.public_ip_address
           instance[:region_id] = item.region_id
           instance[:provider] = 'digital_ocean'
-          instance[:platform] = 'linux'
+          instance[:platform] = Rubber::Platforms::LINUX
           instances << instance
         end
 

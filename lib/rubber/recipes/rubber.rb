@@ -5,6 +5,8 @@ require "socket"
 require 'resolv'
 require 'enumerator'
 require 'capistrano/hostcmd'
+require 'capistrano/thread_safety_fix'
+require 'capistrano/find_servers_for_task_fix'
 require 'pp'
 require 'rubber'
 
@@ -14,9 +16,9 @@ namespace :rubber do
   alias :original_task :task
   def task(name, options={}, &block)
     if options.has_key?(:only)
-      options[:only][:platform] = 'linux'
+      options[:only][:platform] = Rubber::Platforms::LINUX
     else
-      options[:only] = { :platform => 'linux' }
+      options[:only] = { :platform => Rubber::Platforms::LINUX }
     end
 
     original_task(name, options, &block)
@@ -32,9 +34,9 @@ namespace :rubber do
       alias :required_task :task
       def task(name, options={}, &block)
         if options.has_key?(:only)
-          options[:only][:platform] = 'linux'
+          options[:only][:platform] = Rubber::Platforms::LINUX
         else
-          options[:only] = { :platform => 'linux' }
+          options[:only] = { :platform => Rubber::Platforms::LINUX }
         end
 
         required_task(name, options) do
@@ -44,7 +46,7 @@ namespace :rubber do
               top.roles[r] ||= []
             end
           end
-          
+
           if find_servers_for_task(current_task).empty?
             logger.info "No servers for task #{name}, skipping"
             next
@@ -57,7 +59,7 @@ namespace :rubber do
 
   allow_optional_tasks(self)
   on :load, "rubber:init"
-    
+
   required_task :init do
     set :rubber_cfg, Rubber::Configuration.get_configuration(Rubber.env)
     set :rubber_env, rubber_cfg.environment.bind()
@@ -70,9 +72,9 @@ namespace :rubber do
     default_run_options[:shell] = "/bin/bash -l" if default_run_options[:shell].nil?
 
     if default_run_options.has_key?(:only)
-      default_run_options[:only][:platform] = 'linux'
+      default_run_options[:only][:platform] = Rubber::Platforms::LINUX
     else
-      default_run_options[:only] = { :platform => 'linux' }
+      default_run_options[:only] = { :platform => Rubber::Platforms::LINUX }
     end
 
     set :cloud, Rubber.cloud(self)
@@ -82,7 +84,14 @@ namespace :rubber do
     # the private key in the same folder, the public key should have the
     # extension ".pub".
 
-    ssh_options[:keys] = [ENV['RUBBER_SSH_KEY'] || cloud.env.key_file].flatten.compact
+    #ssh keys could be multiple, even from ENV. This is comma separated.
+    ssh_keys = if ENV['RUBBER_SSH_KEY']
+      ENV['RUBBER_SSH_KEY'].split(',')
+    else
+      cloud.env.key_file
+    end
+
+    ssh_options[:keys] = [ssh_keys].flatten.compact
     ssh_options[:timeout] = fetch(:ssh_timeout, 5)
   end
 
