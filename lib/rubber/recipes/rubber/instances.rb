@@ -255,49 +255,7 @@ namespace :rubber do
     post_refresh
   end
 
-  set :mutex, Mutex.new
-
-  def get_vpc_id(env, role_names)
-    if env.vpc
-      env.vpc.id
-    else
-      nil
-    end
-  end
-
-    def get_subnet_id(env, role_names)
-      subnet_id = nil
-      first_subnet_role = nil
-
-      role_names.each do |role|
-        if env.vpc and env.vpc.roles["#{role}"]
-          if env.vpc.roles["#{role}"].subnet_id
-            raise "Two subnets defined for the same server with role: [#{first_subnet_role}: #{subnet_id}, #{role}: #{env.vpc.roles["#{role}"].subnet_id}]" if first_subnet_role
-            first_subnet_role = role
-            subnet_id = env.vpc.roles["#{role}"].subnet_id
-          end
-        end
-      end if env.vpc
-
-      subnet_id
-    end
-
-    def get_tenancy(env, role_names)
-      tenancy = 'default'
-      first_tenancy_role = nil
-
-      role_names.each do |role|
-        if env.vpc.roles["#{role}"]
-          if env.vpc.roles["#{role}"].tenancy
-            raise "Tenancy set in two different roles: [#{first_tenancy_role}, #{role}]" if first_tenancy_role
-            first_tenancy_role = role
-            tenancy = env.vpc.roles["#{role}"].tenancy
-          end
-        end
-      end if env.vpc
-
-      tenancy
-    end
+  set :monitor, Monitor.new
 
   # Creates a new ec2 instance with the given alias and roles
   # Configures aliases (/etc/hosts) on local and remote machines
@@ -305,38 +263,28 @@ namespace :rubber do
     role_names = instance_roles.collect{|x| x.name}
     env = rubber_cfg.environment.bind(role_names, instance_alias)
 
-    vpc_id = get_vpc_id(env, role_names)
-    subnet_id = get_subnet_id(env, role_names)
-    tenancy = get_tenancy(env, role_names)
-
-    # We need to use security_groups during create, so create them up front
-    mutex.synchronize do
-      setup_security_groups(instance_alias, role_names, vpc_id)
+    monitor.synchronize do
+      cloud.before_create_instance(instance_alias, role_names)
     end
+
     security_groups = get_assigned_security_groups(instance_alias, role_names)
 
     cloud_env = env.cloud_providers[env.cloud_provider]
     ami = cloud_env.image_id
     ami_type = cloud_env.image_type
-    availability_zone = env.availability_zone
+    availability_zone = cloud_env.availability_zone
+    region = cloud_env.region
 
     create_spot_instance ||= cloud_env.spot_instance
-
-    logger.info "Creating instance request for instance #{ami}"
-    logger.debug "##### type: #{ami_type}"
-    logger.debug "##### security_groups: #{security_groups.join(',') rescue 'Default'}"
-    logger.debug "##### availability zone: #{availability_zone || 'Default'}"
-    logger.debug "##### vpc: #{vpc_id}" if vpc_id
-    logger.debug "##### subnet: #{subnet_id}" if subnet_id
-    logger.debug "##### tenancy: #{tenancy}" if tenancy
 
     if create_spot_instance
       spot_price = cloud_env.spot_price.to_s
 
+      logger.info "Creating spot instance request for instance #{ami}/#{ami_type}/#{security_groups.join(',') rescue 'Default'}/#{availability_zone || 'Default'}"
       request_id = cloud.create_spot_instance_request(spot_price, ami, ami_type, security_groups, availability_zone)
 
       print "Waiting for spot instance request to be fulfilled"
-      max_wait_time =  cloud_env.spot_instance_request_timeout || (1.0 / 0) # Use the specified timeout value or default to infinite.
+      max_wait_time = cloud_env.spot_instance_request_timeout || (1.0 / 0) # Use the specified timeout value or default to infinite.
       instance_id = nil
       while instance_id.nil? do
         print "."
@@ -359,20 +307,19 @@ namespace :rubber do
     end
 
     if !create_spot_instance || (create_spot_instance && max_wait_time < 0)
-      instance_id = cloud.create_instance(:ami => ami, :ami_type => ami_type, :security_groups => security_groups, :availability_zone => availability_zone, :vpc_id => vpc_id, :subnet_id => subnet_id, :tenancy => tenancy)
+      logger.info "Creating instance #{ami}/#{ami_type}/#{security_groups.join(',') rescue 'Default'}/#{availability_zone || region || 'Default'}"
+      instance_id = cloud.create_instance(instance_alias, ami, ami_type, security_groups, availability_zone, region)
     end
 
     logger.info "Instance #{instance_alias} created: #{instance_id}"
 
-    instance_item = Rubber::Configuration::InstanceItem.new(instance_alias, env.domain, instance_roles, instance_id, ami_type, ami, security_groups, vpc_id, subnet_id, tenancy)
+    instance_item = Rubber::Configuration::InstanceItem.new(instance_alias, env.domain, instance_roles, instance_id, ami_type, ami, security_groups)
     instance_item.spot_instance_request_id = request_id if create_spot_instance
     rubber_instances.add(instance_item)
     rubber_instances.save()
 
-    # Sometimes tag creation will fail, indicating that the instance doesn't exist yet even though it does.  It seems to
-    # be a propagation delay on Amazon's end, so the best we can do is wait and try again.
-    Rubber::Util.retry_on_failure(Exception, :retry_sleep => 0.5, :retry_count => 100) do
-      Rubber::Tag::update_instance_tags(instance_alias)
+    monitor.synchronize do
+      cloud.after_create_instance(instance_item)
     end
   end
 
@@ -401,9 +348,13 @@ namespace :rubber do
 
     env = rubber_cfg.environment.bind(instance_item.role_names, instance_alias)
 
-    instance = cloud.describe_instances(instance_item.instance_id).first rescue {}
+    instance = cloud.describe_instances(instance_item.instance_id).first
 
-    if instance[:state] == "running"
+    monitor.synchronize do
+      cloud.before_refresh_instance(instance_item)
+    end
+
+    if instance[:state] == cloud.active_state
       print "\n"
       logger.info "Instance running, fetching hostname/ip data"
       instance_item.external_host = instance[:external_host]
@@ -411,6 +362,7 @@ namespace :rubber do
       instance_item.internal_host = instance[:internal_host]
       instance_item.internal_ip = instance[:internal_ip]
       instance_item.zone = instance[:zone]
+      instance_item.provider = instance[:provider]
       instance_item.platform = instance[:platform]
       instance_item.root_device_type = instance[:root_device_type]
       rubber_instances.save()
@@ -435,6 +387,10 @@ namespace :rubber do
       #   end
       # end
 
+      monitor.synchronize do
+        cloud.after_refresh_instance(instance_item)
+      end
+
       return true
     end
     return false
@@ -442,9 +398,6 @@ namespace :rubber do
 
   def post_refresh
     env = rubber_cfg.environment.bind(nil, nil)
-
-    # update the remote name/environment tags
-    update_tags
 
     # setup amazon elastic ips if configured to do so
     setup_static_ips
@@ -574,7 +527,7 @@ namespace :rubber do
         while !stopped
           sleep 1
           instance = cloud.describe_instances(instance_item.instance_id).first rescue {}
-          stopped = (instance[:state] == "stopped")
+          stopped = (instance[:state] == cloud.stopped_state)
         end
       end
     end
@@ -589,7 +542,11 @@ namespace :rubber do
 
     stop_threads.each(&:join)
 
-    stop_threads.each(&:join)
+    monitor.synchronize do
+      instance_items.each do |instance_item|
+        cloud.after_stop_instance(instance_item)
+      end
+    end
   end
 
   # Starts the given ec2 instances.  Note that this operation only works for instances that use an EBS volume for the root
@@ -602,8 +559,6 @@ namespace :rubber do
       instance_item = rubber_instances[instance_alias]
 
       fatal "Instance does not exist: #{instance_alias}" if ! instance_item
-      fatal "Cannot start spot instances!" if ! instance_item.spot_instance_request_id.nil?
-      fatal "Cannot start instances with instance-store root device!" if (instance_item.root_device_type != 'ebs')
 
       instance_item
     end
@@ -627,12 +582,12 @@ namespace :rubber do
 
         cloud.start_instance(instance_item)
 
-        cloud.start_instance(instance_item.instance_id)
-
-        # Re-starting an instance will almost certainly give it a new set of IPs and DNS entries, so refresh the values.
         describe_threads << Thread.new do
-          while ! refresh_instance(instance_item.name)
+          started = false
+          while ! started
             sleep 1
+            instance = cloud.describe_instances(instance_item.instance_id).first rescue {}
+            started = (instance[:state] == cloud.active_state)
           end
         end
       end
@@ -646,10 +601,13 @@ namespace :rubber do
     end
 
     start_threads.each(&:join)
-    refresh_threads.each(&:join)
+    describe_threads.each(&:join)
 
-    # Static IPs, DNS, etc. need to be set up for the started instances
-    post_refresh
+    monitor.synchronize do
+      instance_items.each do |instance_item|
+        cloud.after_start_instance(instance_item)
+      end
+    end
   end
 
   # delete from ~/.ssh/known_hosts all lines that begin with ec2- or instance_alias

@@ -6,13 +6,9 @@ namespace :rubber do
     Likewise, rules within a group will get created, and those not will be removed
   DESC
   required_task :setup_security_groups do
-<<<<<<< HEAD
-    setup_security_groups()
-=======
     servers = find_servers_for_task(current_task)
 
     servers.collect(&:host).each{ |host| cloud.setup_security_groups(host) }
->>>>>>> upstream/master
   end
 
   desc <<-DESC

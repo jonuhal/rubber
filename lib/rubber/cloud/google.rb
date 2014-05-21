@@ -22,7 +22,6 @@ module Rubber
                     }
 
                     storage_credentials[:region] = env.cloud_providers.aws.region
-
                     env['storage_credentials'] = storage_credentials
                 end
 
@@ -121,7 +120,7 @@ module Rubber
                 group_keys = groups.keys.clone()
 
                 # For each group that does already exist in cloud
-                cloud_groups = describe_network_rules()
+                cloud_groups = describe_security_groups()
                 cloud_groups.each do |cloud_group|
                     group_name = cloud_group[:name]
 
@@ -228,12 +227,15 @@ module Rubber
                     group['rules'].each do |rule_map|
                         capistrano.logger.debug "Creating new rule: #{rule_map.inspect}"
                         rule_map = Rubber::Util::symbolize_keys(rule_map)
-                        add_network_rule(rule_map)
+                        add_network_item(rule_map)
                     end
                 end
             end
 
-            def add_network_rule(rule_map)
+            def create_security_group(group_name, group_description, vpc_id)
+            end
+
+            def add_network_item(rule_map)
                 if rule_map[:kind] == "compute#firewall"
                     opts = {}
                     opts[:description] = rule_map[:description] if rule_map[:description]
@@ -245,25 +247,32 @@ module Rubber
                 elsif rule_map[:kind] == "compute#route"
                     opts = {}
                     opts[:description] = rule_map[:description] if rule_map[:description]
-                    opts[:tags] = rule[:tags] if rule_map[:tags]
+                    opts[:tags] = rule_map[:tags] if rule_map[:tags]
                     opts[:nextHopInstance] = rule_map[:nextHopInstance] if rule_map[:nextHopInstance]
                     opts[:nextHopGateway] = rule_map[:nextHopGateway] if rule_map[:nextHopGateway]
-                    opts[:nextHopIp] = rule_map [:nextHopIp] if rule_map[:nextHopIp]
+                    opts[:nextHopIp] = rule_map[:nextHopIp] if rule_map[:nextHopIp]
                     opts[:nextHopNetwork] = rule_map[:nextHopNetwork] if rule_map[:nextHopNetwork]
 
                     compute_provider.insert_route(rule_map[:name], rule_map[:network], rule_map[:destRange], rule_map[:priority], opts)
+                elsif rule_map[:kind] == "compute#network"
+                    opts = {}
+                    opts[:description] = rule_map[:description] if rule_map[:description]
+                    opts[:gatewayIPv4] = rule_map[:gatewayIPv4] if rule_map[:gatewayIPv4]
+
+                    compute_provider.insert_network(rule_map[:name], rule_map[:IPv4Range], opts)
                 else
                     raise "unexpected network rule (#{rule_map[:kind]}): #{rule_map}"
                 end
             end
 
-            def describe_network_rules(identity=nil)
+            def describe_security_groups(identity=nil)
                 groups = []
 
                 opts = {}
                 opts["identity"] = identity if identity
                 firewalls = compute_provider.firewalls(opts)
                 routes = compute_provider.routes(opts)
+                networks = compute_provider.networks(opts)
 
                 firewalls.each do |firewall|
                     group = {}

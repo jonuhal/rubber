@@ -85,20 +85,6 @@ namespace :rubber do
     detach_volume(volume_id)
   end
 
-<<<<<<< HEAD
-  def create_volume(size, zone)
-    volumeId = cloud.create_volume(size.to_s, zone)
-    fatal "Failed to create volume" if volumeId.nil?
-    return volumeId
-  end
-
-  def attach_volume(vol_id, instance_id, device)
-    logger.info "Attaching volume (id: #{vol_id}) for instance: #{instance_id}; device: #{device}"
-    cloud.attach_volume(vol_id, instance_id, device)
-  end
-
-=======
->>>>>>> upstream/master
   def setup_volume(ic, vol_spec)
     created = nil
     key = "#{ic.name}_#{vol_spec['device']}"
@@ -142,14 +128,10 @@ namespace :rubber do
         # then format/mount/etc if we don't have an entry in hosts file
         task :_setup_volume, :hosts => ic.connection_ip do
           rubber.sudo_script 'setup_volume', <<-ENDSCRIPT
-<<<<<<< HEAD
-            if ! grep -q '#{vol_spec['device']}' /etc/fstab; then
-=======
             # Make sure the newly added volume was found.
             rescan-scsi-bus || true
 
             if ! grep -q '#{vol_spec['mount']}' /etc/fstab; then
->>>>>>> upstream/master
               if mount | grep -q '#{vol_spec['mount']}'; then
                 umount '#{vol_spec['mount']}'
               fi
