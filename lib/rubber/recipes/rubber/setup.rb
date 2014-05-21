@@ -65,7 +65,7 @@ namespace :rubber do
     end
 
     task :_ensure_key_file_present, :hosts => "#{initial_ssh_user}@#{ip}" do
-      public_key_filename = "#{cloud.env.key_file}.pub"
+      public_key_filename = cloud.env.public_key_location
 
       if File.exists?(public_key_filename)
         public_key = File.read(public_key_filename).chomp

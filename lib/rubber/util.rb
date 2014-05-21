@@ -9,14 +9,14 @@ module Rubber
         options
       end
     end
-    
+
     def stringify_keys(map)
       map.inject({}) do |options, (key, value)|
         options[key.to_s || key] = value
         options
       end
     end
-    
+
     def stringify(val)
       case val
       when String
@@ -28,7 +28,7 @@ module Rubber
       else
         val.to_s
       end
-      
+
     end
 
     def parse_aliases(instance_aliases)
@@ -49,7 +49,7 @@ module Rubber
 
     # Opens the file for writing by root
     def sudo_open(path, perms, &block)
-      open("|sudo tee #{path} > /dev/null", perms, &block)
+      open("|tee #{path} > /dev/null", perms, &block)
     end
 
     def is_rails?
@@ -106,7 +106,7 @@ module Rubber
         if retry_count > 0
           retry_count -= 1
           Rubber.logger.info "Exception, trying again #{retry_count} more times"
-          sleep opts[:retry_sleep].to_i if opts[:retry_sleep] 
+          sleep opts[:retry_sleep].to_i if opts[:retry_sleep]
           retry
         else
           Rubber.logger.error "Too many exceptions...re-raising"
