@@ -18,7 +18,7 @@ namespace :rubber do
       r = get_env("ROLES", "Instance roles (e.g. web,app,db:primary=true)", true, default_roles)
     end
 
-    create_spot_instance = ENV.delete("SPOT_INSTANCE")
+    # create_spot_instance = ENV.delete("SPOT_INSTANCE")
 
     if r == '*'
       instance_roles = rubber_cfg.environment.known_roles.reject {|r| r =~ /slave/ || r =~ /^db$/ }
@@ -26,7 +26,7 @@ namespace :rubber do
       instance_roles = r.split(/\s*,\s*/)
     end
 
-    create_instances(aliases, instance_roles, create_spot_instance)
+    create_instances(aliases, instance_roles) #, create_spot_instance)
   end
 
   desc <<-DESC
@@ -200,7 +200,7 @@ namespace :rubber do
   set :print_ip_command, "ifconfig eth0 | awk 'NR==2 {print $2}' | awk -F: '{print $2}'"
 
   # Creates the set of new instancea after figuring out the roles for each
-  def create_instances(instance_aliases, instance_roles, create_spot_instance=false)
+  def create_instances(instance_aliases, instance_roles)
     creation_threads = []
     refresh_threads = []
 
@@ -227,7 +227,7 @@ namespace :rubber do
       ir = Rubber::Configuration::RoleItem.expand_role_dependencies(ir, get_role_dependencies)
 
       creation_threads << Thread.new do
-        create_instance(instance_alias, ir, create_spot_instance)
+        create_instance(instance_alias, ir)
 
         refresh_threads << Thread.new do
           while ! refresh_instance(instance_alias)
@@ -259,7 +259,7 @@ namespace :rubber do
 
   # Creates a new ec2 instance with the given alias and roles
   # Configures aliases (/etc/hosts) on local and remote machines
-  def create_instance(instance_alias, instance_roles, create_spot_instance)
+  def create_instance(instance_alias, instance_roles)
     role_names = instance_roles.collect{|x| x.name}
     env = rubber_cfg.environment.bind(role_names, instance_alias)
 
@@ -267,49 +267,10 @@ namespace :rubber do
       cloud.before_create_instance(instance_alias, role_names)
     end
 
-    security_groups = get_assigned_security_groups(instance_alias, role_names)
-
-    cloud_env = env.cloud_providers[env.cloud_provider]
-    ami = cloud_env.image_id
-    ami_type = cloud_env.image_type
-    availability_zone = cloud_env.availability_zone
-    region = cloud_env.region
-
-    create_spot_instance ||= cloud_env.spot_instance
-
-    if create_spot_instance
-      spot_price = cloud_env.spot_price.to_s
-
-      logger.info "Creating spot instance request for instance #{ami}/#{ami_type}/#{security_groups.join(',') rescue 'Default'}/#{availability_zone || 'Default'}"
-      request_id = cloud.create_spot_instance_request(spot_price, ami, ami_type, security_groups, availability_zone)
-
-      print "Waiting for spot instance request to be fulfilled"
-      max_wait_time = cloud_env.spot_instance_request_timeout || (1.0 / 0) # Use the specified timeout value or default to infinite.
-      instance_id = nil
-      while instance_id.nil? do
-        print "."
-        sleep 2
-        max_wait_time -= 2
-
-        request = cloud.describe_spot_instance_requests(request_id).first
-        instance_id = request[:instance_id]
-
-        if max_wait_time < 0 && instance_id.nil?
-          cloud.destroy_spot_instance_request(request[:id])
-
-          print "\n"
-          print "Failed to fulfill spot instance in the time specified. Falling back to on-demand instance creation."
-          break
-        end
-      end
-
-      print "\n"
-    end
-
-    if !create_spot_instance || (create_spot_instance && max_wait_time < 0)
-      logger.info "Creating instance #{ami}/#{ami_type}/#{security_groups.join(',') rescue 'Default'}/#{availability_zone || region || 'Default'}"
-      instance_id = cloud.create_instance(instance_alias, ami, ami_type, security_groups, availability_zone, region)
-    end
+    # logger.info "Creating instance #{ami}/#{ami_type}/#{security_groups.join(',') rescue 'Default'}/#{availability_zone || region || 'Default'}"
+    logger.info "Creating instance #{instance_alias}/#{instance_roles.join(',') rescue 'Default'}"
+    # instance_id = cloud.create_instance(instance_alias, ami, ami_type, security_groups, availability_zone, region, network)
+    instance_id = cloud.create_instance(instance_alias, instance_roles, env)
 
     logger.info "Instance #{instance_alias} created: #{instance_id}"
 

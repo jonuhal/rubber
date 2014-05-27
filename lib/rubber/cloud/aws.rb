@@ -31,6 +31,9 @@ module Rubber
 
         env['compute_credentials'] = compute_credentials
         env['storage_credentials'] = storage_credentials
+
+        @create_spot_instance = ENV.delete("SPOT_INSTANCE")
+
         super(env, capistrano)
       end
 
@@ -81,6 +84,50 @@ module Rubber
         Rubber::Util.retry_on_failure(StandardError, :retry_sleep => 1, :retry_count => 120) do
           Rubber::Tag::update_instance_tags(instance.name)
         end
+      end
+
+      # def create_instance(instance_alias, ami, ami_type, security_groups, availability_zone, region, network)
+      def create_instance(instance_alias, instance_roles, env)
+          role_names = instance_roles.collect{|x| x.name}
+          security_groups = get_assigned_security_groups(instance_alias, role_names)
+
+          cloud_env = env.cloud_providers[env.cloud_provider]
+          ami = cloud_env.image_id
+          ami_type = cloud_env.image_type
+          availability_zone = cloud_env.availability_zone
+          region = cloud_env.region
+          network = cloud_env.network
+
+          # create_spot_instance ||= cloud_env.spot_instance
+
+          if @create_spot_instance
+            spot_price = cloud_env.spot_price.to_s
+
+            logger.info "Creating spot instance request for instance #{ami}/#{ami_type}/#{security_groups.join(',') rescue 'Default'}/#{availability_zone || 'Default'}"
+            request_id = cloud.create_spot_instance_request(spot_price, ami, ami_type, security_groups, availability_zone)
+
+            print "Waiting for spot instance request to be fulfilled"
+            max_wait_time = cloud_env.spot_instance_request_timeout || (1.0 / 0) # Use the specified timeout value or default to infinite.
+            instance_id = nil
+            while instance_id.nil? do
+              print "."
+              sleep 2
+              max_wait_time -= 2
+
+              request = cloud.describe_spot_instance_requests(request_id).first
+              instance_id = request[:instance_id]
+
+              if max_wait_time < 0 && instance_id.nil?
+                cloud.destroy_spot_instance_request(request[:id])
+
+                print "\n"
+                print "Failed to fulfill spot instance in the time specified. Falling back to on-demand instance creation."
+                break
+              end
+            end
+
+            print "\n"
+          end
       end
 
       def after_refresh_instance(instance)
