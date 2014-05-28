@@ -162,7 +162,7 @@ module Rubber
 
                     if network_names.delete(network_name)
                         capistrano.logger.debug "Network already in cloud: #{network_name}"
-                        networks.select { |a| a['name'] == network_name }
+                        network = networks.select { |a| a['name'] == network_name }
 
                         if network[:ipv4_range] == cloud_network[:ipv4_range]
                             capistrano.logger.debug "Network IPv4 range matches: #{network[:ipv4_range]}"
@@ -199,12 +199,110 @@ module Rubber
                 end
             end
 
-            def sync_firewalls(networks)
+            def sync_firewalls(firewalls)
+                return unless firewalls
 
+                firewalls = Rubber::Util::stringify(firewalls)
+                # firewalls = isolate_groups(firewalls)
+                firewall_names = firewalls.map { |n| n['name'] }
+
+                cloud_firewalls = describe_firewalls()
+                cloud_firewalls.each do |cloud_firewall|
+                    firewall_name = cloud_firewall[:name]
+
+                    # skip those groups that don't belong to this project/env
+                    next if env.isolate_security_groups && firewall_name !~ /^#{isolate_prefix}/
+
+                    if firewall_names.delete(firewall_name)
+                        capistrano.logger.debug "Firewall already in cloud: #{firewall_name}"
+                        firewall = firewalls.select { |a| a['name'] == firewall_name }
+
+                        if firewall[:name] == cloud_firewall[:name]
+                            capistrano.logger.debug "Firewall name matches: #{firewall[:ipv4_range]}"
+                        else
+                            capistrano.logger.debug "Firewall DOES NOT match: #{firewall[:ipv4_range]}"
+                            answer = Capistrano::CLI.ui.ask("Remove from and re-add to cloud? [y/N]: ")
+
+                            if answer =~ /^y/
+                                destroy_firewall(firewall_name)
+                                create_firewall(firewall)
+                            else
+                                capistrano.logger.debug "Firewall *NOT* synced with local config: #{firewall_name}"
+                            end
+                        end
+                    else
+                        # delete firewall
+                        answer = nil
+                        msg = "Firewall '#{firewall_name}' exists in cloud but not locally"
+
+                        if env.prompt_for_security_group_sync
+                            answer = Capistrano::CLI.ui.ask("#{msg}, remove from cloud? [y/N]: ")
+                        else
+                            capistrano.logger.debug(msg)
+                        end
+
+                        destroy_firewall(firewall_name) if answer =~ /^y/
+                    end
+                end
+
+                firewall_names.each do |firewall_name|
+                    capistrano.logger.debug "Creating new firewall: #{firewall_name}"
+                    firewall = firewalls.select { |a| a['name'] == firewall_name }
+                    add_network_item(firewall[0]) if firewall.count > 0
+                end
             end
 
-            def sync_routes(networks)
+            def sync_routes(routes)
+                return unless routes
 
+                routes = Rubber::Util::stringify(routes)
+                # routes = isolate_groups(routes)
+                route_names = routes.map { |n| n['name'] }
+
+                cloud_routes = describe_routes()
+                cloud_routes.each do |cloud_route|
+                    route_name = cloud_route[:name]
+
+                    # skip those groups that don't belong to this project/env
+                    next if env.isolate_security_groups && route_name !~ /^#{isolate_prefix}/
+
+                    if route_names.delete(route_name)
+                        capistrano.logger.debug "Route already in cloud: #{route_name}"
+                        route = routes.select { |a| a['name'] == route_name }
+
+                        if route[:name] == cloud_route[:name]
+                            capistrano.logger.debug "Route name matches: #{route[:ipv4_range]}"
+                        else
+                            capistrano.logger.debug "Route DOES NOT match: #{route[:ipv4_range]}"
+                            answer = Capistrano::CLI.ui.ask("Remove from and re-add to cloud? [y/N]: ")
+
+                            if answer =~ /^y/
+                                destroy_route(route_name)
+                                create_route(route)
+                            else
+                                capistrano.logger.debug "Route *NOT* synced with local config: #{route_name}"
+                            end
+                        end
+                    else
+                        # delete route
+                        answer = nil
+                        msg = "Route '#{route_name}' exists in cloud but not locally"
+
+                        if env.prompt_for_security_group_sync
+                            answer = Capistrano::CLI.ui.ask("#{msg}, remove from cloud? [y/N]: ")
+                        else
+                            capistrano.logger.debug(msg)
+                        end
+
+                        destroy_route(route_name) if answer =~ /^y/
+                    end
+                end
+
+                route_names.each do |route_name|
+                    capistrano.logger.debug "Creating new route: #{route_name}"
+                    route = routes.select { |a| a['name'] == route_name }
+                    add_network_item(route[0]) if route.count > 0
+                end
             end
 
             def add_network_item(rule_map)
@@ -220,16 +318,16 @@ module Rubber
                     opts = {}
                     opts[:description] = rule_map['description'] if rule_map['description']
                     opts[:tags] = rule_map['tags'] if rule_map['tags']
-                    opts[:nextHopInstance] = rule_map['nextHopInstance'] if rule_map['nextHopInstance']
-                    opts[:nextHopGateway] = rule_map['nextHopGateway'] if rule_map['nextHopGateway']
-                    opts[:nextHopIp] = rule_map['nextHopIp'] if rule_map['nextHopIp']
-                    opts[:nextHopNetwork] = rule_map['nextHopNetwork'] if rule_map['nextHopNetwork']
+                    opts[:next_hop_instance] = rule_map['nextHopInstance'] if rule_map['nextHopInstance']
+                    opts[:next_hop_gateway] = rule_map['nextHopGateway'] if rule_map['nextHopGateway']
+                    opts[:next_hop_ip] = rule_map['nextHopIp'] if rule_map['nextHopIp']
+                    opts[:next_hop_network] = rule_map['nextHopNetwork'] if rule_map['nextHopNetwork']
 
                     compute_provider.insert_route(rule_map['name'], rule_map['network'], rule_map['destRange'], rule_map['priority'], opts)
                 elsif rule_map['kind'] == "compute#network"
                     opts = {}
                     opts[:description] = rule_map['description'] if rule_map['description']
-                    opts[:gatewayIPv4] = rule_map['gatewayIPv4'] if rule_map['gatewayIPv4']
+                    opts[:gateway_ipv4] = rule_map['gatewayIPv4'] if rule_map['gatewayIPv4']
 
                     compute_provider.insert_network(rule_map['name'], rule_map['IPv4Range'], opts)
                 else
@@ -277,13 +375,13 @@ module Rubber
                     cloud_firewall[:sourceTags] = firewall.source_tags if firewall.source_tags
                     cloud_firewall[:targetTags] = firewall.target_tags if firewall.target_tags
 
-                    cloud_firewall.allowed.each do |protocol_port_pair|
+                    firewall.allowed.each do |protocol_port_pair|
                         cloud_firewall[:allowed] ||= []
                         rule = {}
-                        rule[:IPProtocol] = protocol_port_pair.IPProtocol
-                        rule[:ports] = protocol_port_pair.ports if protocol_port_pair.ports
+                        rule[:IPProtocol] = protocol_port_pair['IPProtocol']
+                        rule[:ports] = protocol_port_pair['ports'] if protocol_port_pair['ports']
                         cloud_firewall[:allowed] << rule
-                    end if cloud_firewall.allowed
+                    end if firewall.allowed
 
                     firewalls << cloud_firewall
                 end
@@ -295,7 +393,7 @@ module Rubber
                 routes = []
                 cloud_routes = compute_provider.routes
 
-                cloud_routes.each do |cloud_route|
+                cloud_routes.each do |route|
                     cloud_route = {}
                     cloud_route[:kind] = route.kind
                     cloud_route[:id] = route.id
@@ -304,7 +402,7 @@ module Rubber
                     cloud_route[:network] = route.network
                     cloud_route[:dest_range] = route.dest_range
                     cloud_route[:priority] = route.priority
-                    cloud_route[:self_link] = firewall.self_link
+                    cloud_route[:self_link] = route.self_link
                     cloud_route[:next_hop_instance] = route.next_hop_instance if route.next_hop_instance
                     cloud_route[:next_hop_ip] = route.next_hop_ip if route.next_hop_ip
                     cloud_route[:next_hop_network] = route.next_hop_network if route.next_hop_network
