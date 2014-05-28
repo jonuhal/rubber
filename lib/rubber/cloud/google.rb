@@ -86,7 +86,7 @@ module Rubber
                                                             :public_key_path => @public_key_location,
                                                             :network => network,
                                                             :wait_for_ssh => false)
-                response.name
+                return response.name, image_type, image_id, []
             end
 
             def describe_instances(instance_id=nil)

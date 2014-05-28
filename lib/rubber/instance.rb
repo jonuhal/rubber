@@ -195,7 +195,7 @@ module Rubber
 
     # The configuration for a single instance
     class InstanceItem
-      attr_reader :name, :domain, :instance_id, :image_type, :image_id, :security_groups, :vpc_id, :subnet_id, :tenancy
+      attr_reader :name, :domain, :instance_id, :image_type, :image_id, :security_groups
       attr_accessor :roles, :zone
       attr_accessor :external_host, :external_ip
       attr_accessor :internal_host, :internal_ip
@@ -203,7 +203,7 @@ module Rubber
       attr_accessor :spot_instance_request_id
       attr_accessor :provider, :platform
 
-      def initialize(name, domain, roles, instance_id, image_type, image_id, security_group_list=[], vpc_id=nil, subnet_id=nil, tenancy='default')
+      def initialize(name, domain, roles, instance_id, image_type, image_id, security_group_list=[])
         @name = name
         @domain = domain
         @roles = roles
@@ -211,17 +211,14 @@ module Rubber
         @image_type = image_type
         @image_id = image_id
         @security_groups = security_group_list
-        @vpc_id = vpc_id
-        @subnet_id = subnet_id
-        @tenancy = tenancy
       end
 
       def connection_ip
-          if vpc_id
-              self.internal_ip
-          else
+          # if vpc_id
+          #     self.internal_ip
+          # else
               self.external_ip
-          end
+          # end
       end
 
       def self.from_hash(hash)

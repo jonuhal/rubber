@@ -128,6 +128,12 @@ module Rubber
 
             print "\n"
           end
+
+          if !create_spot_instance || (create_spot_instance && max_wait_time < 0)
+            instance_id = cloud.create_instance(:ami => ami, :ami_type => ami_type, :security_groups => security_groups, :availability_zone => availability_zone, :vpc_id => vpc_id, :subnet_id => subnet_id, :tenancy => tenancy)
+          end
+
+          return instance_id, ami_type, ami, security_groups
       end
 
       def after_refresh_instance(instance)

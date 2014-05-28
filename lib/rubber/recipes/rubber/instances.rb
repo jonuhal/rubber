@@ -270,12 +270,12 @@ namespace :rubber do
     # logger.info "Creating instance #{ami}/#{ami_type}/#{security_groups.join(',') rescue 'Default'}/#{availability_zone || region || 'Default'}"
     logger.info "Creating instance #{instance_alias}/#{instance_roles.join(',') rescue 'Default'}"
     # instance_id = cloud.create_instance(instance_alias, ami, ami_type, security_groups, availability_zone, region, network)
-    instance_id = cloud.create_instance(instance_alias, instance_roles, env)
+    instance_id, image_type, image, security_groups = cloud.create_instance(instance_alias, instance_roles, env)
 
     logger.info "Instance #{instance_alias} created: #{instance_id}"
 
-    instance_item = Rubber::Configuration::InstanceItem.new(instance_alias, env.domain, instance_roles, instance_id, ami_type, ami, security_groups)
-    instance_item.spot_instance_request_id = request_id if create_spot_instance
+    instance_item = Rubber::Configuration::InstanceItem.new(instance_alias, env.domain, instance_roles, instance_id, image_type, image, security_groups)
+    # instance_item.spot_instance_request_id = request_id if create_spot_instance
     rubber_instances.add(instance_item)
     rubber_instances.save()
 
