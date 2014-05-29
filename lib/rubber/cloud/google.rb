@@ -2,9 +2,7 @@ require 'rubber/cloud/fog'
 
 module Rubber
     module Cloud
-
         class Google < Fog
-
             def initialize(env, capistrano)
                 @private_key_location ||= env.cloud_providers.google.private_key_location
                 @public_key_location ||= env.cloud_providers.google.public_key_location
@@ -34,6 +32,14 @@ module Rubber
 
             def before_create_instance(instance_alias, role_names)
                 setup_network(instance_alias, role_names)
+            end
+
+            def after_create_instance(instance)
+                # create_deploy_user()
+            end
+
+            def create_deploy_user()
+                rsudo "if ! id #{Rubber.config.app_user} &> /dev/null; then adduser --system --group #{Rubber.config.app_user} ; passwd -l #{Rubber.config.app_user} ; fi"
             end
 
             # def create_instance(instance_alias, ami, ami_type, security_groups, availability_zone, region, network)
@@ -79,13 +85,12 @@ module Rubber
 
                 # do not wait for SSH if you are deploying to a private network that does not yet allow SSH into the environment
                 response = compute_provider.servers.bootstrap(:name => "#{Rubber.env}-#{instance_alias}",
-                                                            :source_image => image_id,
-                                                            :machine_type => image_type,
-                                                            :zone_name => availability_zone,
-                                                            :private_key_path => @private_key_location,
-                                                            :public_key_path => @public_key_location,
-                                                            :network => network,
-                                                            :wait_for_ssh => false)
+                                                              :source_image => image_id,
+                                                              :machine_type => image_type,
+                                                              :zone_name => availability_zone,
+                                                              :private_key_path => @private_key_location,
+                                                              :public_key_path => @public_key_location,
+                                                              :network => network)
                 return response.name, image_type, image_id, []
             end
 
@@ -335,8 +340,34 @@ module Rubber
                 end
             end
 
+            def destroy_networks()
+                compute_provider.networks.each do |network|
+                    destroy_network(network.name)
+                end
+            end
+
+            def destroy_firewalls()
+                compute_provider.firewalls.each do |firewall|
+                    destroy_firewall(firewall.name)
+                end
+            end
+
+            def destroy_routes()
+                compute_provider.routes.each do |route|
+                    destroy_route(route.name)
+                end
+            end
+
             def destroy_network(network_name)
                 compute_provider.delete_network(network_name)
+            end
+
+            def destroy_firewall(firewall_name)
+                compute_provider.delete_firewall(firewall_name)
+            end
+
+            def destroy_route(route_name)
+                compute_provider.delete_route(route_name)
             end
 
             def describe_networks()
@@ -438,6 +469,16 @@ module Rubber
             def create_volume(instance, volume_spec)
                 volume = compute_provider.volumes.create(:size => volume_spec['size'], :availability_zone => volume_spec['zone'])
                 volume.id
+            end
+
+            def after_destroy_all()
+                destroy_networking()
+            end
+
+            def destroy_networking()
+                destroy_firewalls()
+                destroy_routes()
+                destroy_networks()
             end
         end
     end

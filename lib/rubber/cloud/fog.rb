@@ -157,6 +157,14 @@ module Rubber
       def should_destroy_volume_when_instance_destroyed?
         false
       end
+
+      def before_destroy_all()
+        # No-op by default.
+      end
+
+      def after_destroy_all()
+        # No-op by default.
+      end
     end
 
   end

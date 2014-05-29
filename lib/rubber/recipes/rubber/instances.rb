@@ -59,8 +59,16 @@ namespace :rubber do
     Destroy ALL the EC2 instances for the current env
   DESC
   required_task :destroy_all do
+    monitor.synchronize do
+      cloud.before_destroy_all()
+    end
+
     rubber_instances.each do |ic|
       destroy_instance(ic.name, ENV['FORCE'] =~ /^(t|y)/)
+    end
+
+    monitor.synchronize do
+      cloud.after_destroy_all()
     end
   end
 

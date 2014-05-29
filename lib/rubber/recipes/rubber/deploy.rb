@@ -61,6 +61,8 @@ namespace :rubber do
   task :setup_app_permissions do
     rsudo "find #{shared_path} -name cached-copy -prune -o -name bundle -prune -o -print0 | xargs -0 chown #{rubber_env.app_user}:#{rubber_env.app_user}"
     rsudo "chown -R #{rubber_env.app_user}:#{rubber_env.app_user} #{current_path}/tmp"
+    rsudo "chown #{rubber_env.app_user}:#{rubber_env.app_user} /mnt/#{rubber_env.application}-#{Rubber.env}"
+    rsudo "chmod g+s /mnt/#{rubber_env.application}-#{Rubber.env}"
   end
 
   def run_config(options={})
@@ -102,7 +104,7 @@ namespace :rubber do
 
       set :rubber_config_files_pushed, true
     end
-    
+
     rsudo "cd #{path} && RUBBER_ENV=#{Rubber.env} RAILS_ENV=#{Rubber.env} ./bin/rubber config #{opts}"
   end
 
