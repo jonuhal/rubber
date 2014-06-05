@@ -467,8 +467,52 @@ module Rubber
             end
 
             def create_volume(instance, volume_spec)
-                volume = compute_provider.volumes.create(:size => volume_spec['size'], :availability_zone => volume_spec['zone'])
-                volume.id
+                volume = compute_provider.disks.create(name: volume_spec['name'], zone_name: volume_spec['zone'], size_gb: volume_spec['size'])
+                volume.name
+            end
+
+            def describe_volumes(volume_id=nil)
+                disks = []
+                opts = {}
+
+                if volume_id
+                    cloud_disks = [response = compute_provider.disks.get(volume_id)]
+                else
+                    cloud_disks = response = compute_provider.disks.all(opts)
+                end
+
+                cloud_disks.each do |cloud_disk|
+                    disk = {}
+                    disk[:kind] = cloud_disk.kind
+                    disk[:id] = cloud_disk.id
+                    disk[:status] = cloud_disk.status
+                    disk[:zone] = cloud_disk.zone_name
+                    disk[:name] = cloud_disk.name
+                    disk[:self_link] = cloud_disk.self_link if cloud_disk.self_link
+                    disk[:source_image] = cloud_disk.source_image if cloud_disk.source_image
+                    disk[:source_snapshot] = cloud_disk.source_snapshot if cloud_disk.source_snapshot
+                    disk[:source_snapshot_id] = cloud_disk.source_snapshot_id if cloud_disk.source_snapshot_id
+
+                    disks << disk
+                end
+
+                disks
+            end
+
+            def after_create_volume(ic, vol_spec)
+
+            end
+
+            def attach_volume(instance, volume_spec, volume_id)
+                # After we create a volume, we need to attach it to the instance.
+                volume = compute_provider.disks.get(volume_id)
+                server = compute_provider.servers.get(instance.instance_id)
+                response = compute_provider.attach_disk(server.name, volume.zone_name, volume.self_link, {writable: true, deviceName: volume_spec.device.split('/')[-1], autoDelete: false})
+                response.body['name']
+            end
+
+            def volume_attached?(instance, volume_spec, attach_response)
+                true
             end
 
             def after_destroy_all()

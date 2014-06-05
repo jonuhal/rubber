@@ -100,16 +100,20 @@ namespace :rubber do
     else
       logger.info "Creating volume for #{ic.full_name}:#{vol_spec['device']}"
       vol_id = cloud.create_volume(ic, vol_spec)
+      # work around for determining if the volume is all the way created yet
+      sleep 5
       artifacts['volumes'][key] = vol_id
       rubber_instances.save
       created = vol_spec['device']
     end
 
+    cloud.after_create_volume(ic, vol_spec)
+
     # then, attach it if we don't have a record (on instance) of attachment
     ic.volumes ||= []
     if ! ic.volumes.include?(vol_id)
       logger.info "Attaching volume #{vol_id} to #{ic.full_name}:#{vol_spec['device']}"
-      cloud.after_create_volume(ic, vol_id, vol_spec)
+      attach_response = cloud.attach_volume(ic, vol_spec, vol_id)
       ic.volumes << vol_id
       rubber_instances.save
 
@@ -117,8 +121,7 @@ namespace :rubber do
       while true do
         print "."
         sleep 2
-        volume = cloud.describe_volumes(vol_id).first
-        break if volume[:attachment_status] == "attached"
+        break if cloud.volume_attached?(ic, vol_id, attach_response)
       end
       print "\n"
 
@@ -143,7 +146,7 @@ namespace :rubber do
 		            device='#{vol_spec['device']}'
 	            fi
 
-		          echo "$device #{vol_spec['mount']} #{vol_spec['filesystem']} #{vol_spec['mount_opts'] ? vol_spec['mount_opts'] : 'noatime'} 0 0 # rubber volume #{vol_id}" >> /etc/fstab
+		          echo "$device #{vol_spec['mount']} #{vol_spec['filesystem']} #{vol_spec['mount_opts'] ? vol_spec['mount_opts'] : 'noatime'} 0 0 # rubber disk #{vol_id}" >> /etc/fstab
 
 		          # Ensure volume is ready before running mkfs on it.
 		          echo 'Waiting for device'

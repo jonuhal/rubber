@@ -138,7 +138,7 @@ module Rubber
         # No-op by default.
       end
 
-      def after_create_volume(instance, volume_id, volume_spec)
+      def after_create_volume(instance, volume_spec)
         # No-op by default.
       end
 
@@ -151,6 +151,14 @@ module Rubber
       end
 
       def after_destroy_volume(volume_id)
+        # No-op by default.
+      end
+
+      def attach_volume(instance, volume_spec, volume_id)
+        # No-op by default.
+      end
+
+      def volume_attached?(ic, vol_id, attach_response)
         # No-op by default.
       end
 

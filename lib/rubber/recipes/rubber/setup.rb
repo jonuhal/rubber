@@ -432,6 +432,15 @@ namespace :rubber do
   end
 
   desc <<-DESC
+    Update the permissions on the project directory to match the deploying user
+  DESC
+  after "deploy:setup", "rubber:set_project_dir_permissions"
+  task :set_project_dir_permissions do
+    rsudo "chown -R #{runner}:#{runner} #{deploy_to}"
+    rsudo "chmod -R g+s #{deploy_to}"
+  end
+
+  desc <<-DESC
     Convenience task for installing your defined set of ruby gems locally.
   DESC
   required_task :install_local_gems do
