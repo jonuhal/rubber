@@ -440,21 +440,21 @@ module Rubber
                     cloud_route[:next_hop_gateway] = route.next_hop_gateway if route.next_hop_gateway
                     cloud_route[:tags] = route.tags if route.tags
 
-                    cloud_route.warnings.each do |warning|
+                    route.warnings.each do |warning|
                         cloud_route[:warnings] ||= []
                         rule = {}
 
-                        rule[:code] = warning.code
-                        rule[:message] = warning.message
+                        rule[:code] = warning['code']
+                        rule[:message] = warning['message']
 
-                        warning.data.each do |datum|
+                        warning['data'].each do |datum|
                             rule[:data] ||= []
                             datum_rule = {}
 
-                            datum_rule[:key] = datum.key
-                            datum_rule[:value] = datum.value
+                            datum_rule[:key] = datum['key']
+                            datum_rule[:value] = datum['value']
 
-                            rule << datum_rule
+                            rule[:data] << datum_rule
                         end
 
                         cloud_route[:warnings] << rule
