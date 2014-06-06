@@ -38,9 +38,9 @@ module Rubber
                 # create_deploy_user()
             end
 
-            def create_deploy_user()
-                rsudo "if ! id #{Rubber.config.app_user} &> /dev/null; then adduser --system --group #{Rubber.config.app_user} ; passwd -l #{Rubber.config.app_user} ; fi"
-            end
+            # def create_deploy_user()
+            #     rsudo "if ! id #{Rubber.config.app_user} &> /dev/null; then adduser --system --group #{Rubber.config.app_user} ; passwd -l #{Rubber.config.app_user} ; fi"
+            # end
 
             # def create_instance(instance_alias, ami, ami_type, security_groups, availability_zone, region, network)
             def create_instance(instance_alias, instance_roles, env)

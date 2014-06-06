@@ -438,6 +438,9 @@ namespace :rubber do
   task :set_project_dir_permissions do
     rsudo "chown -R #{runner}:#{runner} #{deploy_to}"
     rsudo "chmod -R g+s #{deploy_to}"
+
+    logger.info "Adding current user (#{user}) to deploy group (#{Rubber.config.app_user})"
+    rsudo "usermod -a -G #{Rubber.config.app_user} #{user}"
   end
 
   desc <<-DESC
