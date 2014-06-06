@@ -512,6 +512,7 @@ module Rubber
             end
 
             def volume_attached?(instance, volume_spec, attach_response)
+                # need logic to check if the attach operation was successful
                 true
             end
 
