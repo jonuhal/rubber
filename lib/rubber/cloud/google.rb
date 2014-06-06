@@ -84,7 +84,7 @@ module Rubber
                 end
 
                 # do not wait for SSH if you are deploying to a private network that does not yet allow SSH into the environment
-                response = compute_provider.servers.bootstrap(:name => "#{Rubber.env}-#{instance_alias}",
+                response = compute_provider.servers.bootstrap(:name => instance_alias,
                                                               :source_image => image_id,
                                                               :machine_type => image_type,
                                                               :zone_name => availability_zone,
