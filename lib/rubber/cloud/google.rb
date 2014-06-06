@@ -10,7 +10,7 @@ module Rubber
                 compute_credentials = {
                     :provider => 'Google',
                     :google_project => env.cloud_providers.google.project_id,
-                    :google_client_email => env.cloud_providers.google.client_email,
+                    :google_client_email => env.cloud_providers.google[Rubber.env].client_email,
                     :google_key_location => env.cloud_providers.google.key_location
                 }
 
