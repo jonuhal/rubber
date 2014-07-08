@@ -44,6 +44,7 @@ matrix:
     - rvm: 1.8.7
     - rvm: jruby-18mode
     - rvm: jruby-head
+    - rvm: ruby-head
 
 # script: bundle exec rspec spec
 env:
@@ -51,4 +52,4 @@ env:
     - JAVA_OPTS="-server -Djruby.cext.enabled=false -Djruby.compile.invokedynamic=false"
 
 notifications:
-  irc: "irc.freenode.net#rubberec2"
+  irc: "irc.freenode.net#rubber"

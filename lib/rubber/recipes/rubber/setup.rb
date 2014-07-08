@@ -65,7 +65,7 @@ namespace :rubber do
     end
 
     task :_ensure_key_file_present, :hosts => "#{initial_ssh_user}@#{ip}" do
-      public_key_filename = cloud.env.public_key_location
+      public_key_filename = "#{cloud.env.key_file}.pub"
 
       if File.exists?(public_key_filename)
         public_key = File.read(public_key_filename).chomp
@@ -145,28 +145,48 @@ namespace :rubber do
     Generates/etc/hosts for local machine
   DESC
   required_task :setup_local_aliases do
-    hosts_file = '/etc/hosts'
+    hosts_file = rubber_env.local_windows? ?
+        "#{ENV['windir']}\\System32\\drivers\\etc\\hosts" :
+        '/etc/hosts'
 
     # Generate /etc/hosts contents for the local machine from instance config
     delim = "## rubber config #{rubber_env.domain} #{Rubber.env}"
     local_hosts = delim + "\n"
     rubber_instances.each do |ic|
-      # don't add unqualified hostname in local hosts file since user may be
-      # managing multiple domains with same aliases
-      hosts_data = [ic.full_name, ic.external_host, ic.internal_host]
 
-      # add the ip aliases for web tools hosts so we can map internal tools
-      # to their own vhost to make proxying easier (rewriting url paths for
-      # proxy is a real pain, e.g. '/graphite/' externally to '/' on the
-      # graphite web app)
-      if ic.role_names.include?('web_tools')
-        Array(rubber_env.web_tools_proxies).each do |name, settings|
-          hosts_data << "#{name}-#{ic.full_name}"
+      if rubber_env.local_windows?
+
+        hosts_data = [ic.full_name, ic.internal_host]
+
+        if ic.role_names.include?('web_tools')
+          Array(rubber_env.web_tools_proxies).each do |name, settings|
+            hosts_data << "#{name}-#{ic.full_name}"
+          end
         end
-      end
 
-      local_hosts << ic.connection_ip << ' ' << hosts_data.join(' ') << "\n"
+        hosts_data.compact.each do |host_name|
+          local_hosts << ic.external_ip.ljust(18) << host_name << "\n"
+        end
+
+      else # non-Windows OS
+        # don't add unqualified hostname in local hosts file since user may be
+        # managing multiple domains with same aliases
+        hosts_data = [ic.full_name, ic.external_host, ic.internal_host]
+
+        # add the ip aliases for web tools hosts so we can map internal tools
+        # to their own vhost to make proxying easier (rewriting url paths for
+        # proxy is a real pain, e.g. '/graphite/' externally to '/' on the
+        # graphite web app)
+        if ic.role_names.include?('web_tools')
+          Array(rubber_env.web_tools_proxies).each do |name, settings|
+            hosts_data << "#{name}-#{ic.full_name}"
+          end
+        end
+
+        local_hosts << ic.connection_ip << ' ' << hosts_data.compact.join(' ') << "\n"
+      end
     end
+
     local_hosts << delim << "\n"
 
     # Write out the hosts file for this machine, use sudo
@@ -175,10 +195,25 @@ namespace :rubber do
 
     # only write out if it has changed
     if existing != (filtered + local_hosts)
-      logger.info "Writing out aliases into local machines #{hosts_file}, sudo access needed"
-      Rubber::Util::sudo_open(hosts_file, 'w') do |f|
-        f.write(filtered)
-        f.write(local_hosts)
+      if rubber_env.local_windows?
+        logger.info "Writing out aliases into local machines #{hosts_file}"
+
+        begin
+          File.open(hosts_file, 'w') do |f|
+            f.write(filtered)
+            f.write(local_hosts)
+          end
+        rescue
+          error_msg = "Could not modify #{hosts_file} on local machine."
+          error_msg += ' Please ensure you are running command as Administrator.'
+          abort error_msg
+        end
+      else # non-Windows OS
+        logger.info "Writing out aliases into local machines #{hosts_file}, sudo access needed"
+        Rubber::Util::sudo_open(hosts_file, 'w') do |f|
+          f.write(filtered)
+          f.write(local_hosts)
+        end
       end
     end
   end
@@ -403,8 +438,17 @@ namespace :rubber do
         'scsitools'                   # Needed to rescan SCSI channels for any added devices.
     ]
 
-    rsudo "apt-get -q update"
-    rsudo "export DEBIAN_FRONTEND=noninteractive; apt-get -q -o Dpkg::Options::=--force-confold -y --force-yes install #{core_packages.join(' ')}"
+    install_commands = core_packages.collect do |package|
+      "apt-get -q -o Dpkg::Options::=--force-confold -y --force-yes install #{package} || true"
+    end
+
+    sudo_script 'install_core_packages', <<-ENDSCRIPT
+      export DEBIAN_FRONTEND=noninteractive
+
+      apt-get -q update
+
+      #{install_commands.join("\n")}
+    ENDSCRIPT
   end
 
   desc <<-DESC
@@ -594,6 +638,7 @@ namespace :rubber do
           expanded_pkg_list << pkg_spec
         end
       end
+      expanded_pkg_list << 'ec2-ami-tools' if rubber_env.cloud_provider == 'aws'
       expanded_pkg_list.join(' ')
     end
 

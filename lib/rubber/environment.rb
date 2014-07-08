@@ -81,7 +81,7 @@ module Rubber
         roles.concat Dir["#{@config_root}/role/*"].collect {|f| File.basename(f) }
 
         # all the roles known about in script directory
-        roles.concat Dir["#{Rubber.root}/bin/*/role/*"].collect {|f| File.basename(f) }
+        roles.concat Dir["#{Rubber.root}/script/*/role/*"].collect {|f| File.basename(f) }
 
         # all the roles known about in yml files
         Dir["#{@config_root}/rubber*.yml"].each do |yml|
@@ -230,9 +230,9 @@ module Rubber
         # Forces role/host overrides into config
         def bind_config(global)
           global = global.clone()
-          role_overrides = global["roles"] || {}
-          env_overrides = global["environments"] || {}
-          host_overrides = global["hosts"] || {}
+          role_overrides = global.delete("roles") || {}
+          env_overrides = global.delete("environments") || {}
+          host_overrides = global.delete("hosts") || {}
 
           Array(roles).each do |role|
             Array(role_overrides[role]).each do |k, v|
