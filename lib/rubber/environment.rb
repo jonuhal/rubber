@@ -230,9 +230,9 @@ module Rubber
         # Forces role/host overrides into config
         def bind_config(global)
           global = global.clone()
-          role_overrides = global("roles") || {}
-          env_overrides = global("environments") || {}
-          host_overrides = global("hosts") || {}
+          role_overrides = global["roles"] || {}
+          env_overrides = global["environments"] || {}
+          host_overrides = global["hosts"] || {}
 
           Array(roles).each do |role|
             Array(role_overrides[role]).each do |k, v|
