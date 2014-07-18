@@ -480,6 +480,7 @@ namespace :rubber do
   DESC
   after "deploy:setup", "rubber:set_project_dir_permissions"
   task :set_project_dir_permissions do
+    rsudo "chown -R #{runner}:#{runner} /usr/local/rubies"
     rsudo "chown -R #{runner}:#{runner} #{deploy_to}"
     rsudo "chmod -R g+s #{deploy_to}"
 

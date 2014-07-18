@@ -33,7 +33,7 @@ namespace :rubber do
     end
 
     after "rubber:base:install_ruby_build", "rubber:base:install_ruby"
-    task :install_ruby do
+    task :install_ruby, except: {no_release: true} do
       rubber.sudo_script "install_ruby", <<-ENDSCRIPT
       installed_ruby_ver=`which ruby | cut -d / -f 5`
       desired_ruby_ver="#{rubber_env.ruby_version}"
