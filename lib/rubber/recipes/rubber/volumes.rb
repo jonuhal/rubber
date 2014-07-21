@@ -107,13 +107,14 @@ namespace :rubber do
       created = vol_spec['device']
     end
 
-    cloud.after_create_volume(ic, vol_spec)
+    #cloud.after_create_volume(ic, vol_spec)
 
     # then, attach it if we don't have a record (on instance) of attachment
     ic.volumes ||= []
     if ! ic.volumes.include?(vol_id)
       logger.info "Attaching volume #{vol_id} to #{ic.full_name}:#{vol_spec['device']}"
-      attach_response = cloud.attach_volume(ic, vol_spec, vol_id)
+      cloud.after_create_volume(ic, vol_id, vol_spec)
+      #attach_response = cloud.attach_volume(ic, vol_spec, vol_id)
       ic.volumes << vol_id
       rubber_instances.save
 
